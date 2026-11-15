@@ -1,0 +1,99 @@
+{
+  "name": "AnAverageOnePiece",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+
+    "ServerScriptService": {
+      "Server": {
+        "$path": "src/server"
+      }
+    },
+
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Client": {
+          "$path": "src/client"
+        }
+      }
+    },
+
+    "Workspace": {
+      "$properties": {
+        "FilteringEnabled": true
+      },
+      "$attributes": {
+        "SeaPreset": "Sea1"
+      },
+      "Ships": {
+        "$path": "src/workspace/Ships"
+      },
+      "BattleIsland": {
+        "$path": "src/workspace/BattleIsland.model.json"
+      }
+    },
+
+    "Lighting": {
+      "$properties": {
+        "Technology": "ShadowMap",
+        "GlobalShadows": true,
+        "Outlines": false,
+        "ClockTime": 13.2,
+        "GeographicLatitude": 23,
+        "Brightness": 3,
+        "ExposureCompensation": 0.1,
+        "Ambient": [0.2745, 0.2902, 0.3373],
+        "OutdoorAmbient": [0.5882, 0.6275, 0.6863],
+        "ColorShift_Top": [1.0, 0.9569, 0.8706],
+        "EnvironmentDiffuseScale": 0.6,
+        "EnvironmentSpecularScale": 0.8
+      },
+      "Atmosphere": {
+        "$className": "Atmosphere",
+        "$properties": {
+          "Density": 0.24,
+          "Offset": 0.12,
+          "Color": [0.7843, 0.8706, 0.9412],
+          "Decay": [0.4314, 0.5882, 0.7451],
+          "Glare": 0.25,
+          "Haze": 0.6
+        }
+      },
+      "ColorCorrection": {
+        "$className": "ColorCorrectionEffect",
+        "$properties": {
+          "Brightness": 0.02,
+          "Contrast": 0.06,
+          "Saturation": 0.18,
+          "TintColor": [1.0, 0.9882, 0.9608]
+        }
+      },
+      "Bloom": {
+        "$className": "BloomEffect",
+        "$properties": {
+          "Intensity": 0.5,
+          "Size": 24,
+          "Threshold": 1.9
+        }
+      },
+      "SunRays": {
+        "$className": "SunRaysEffect",
+        "$properties": {
+          "Intensity": 0.06,
+          "Spread": 0.6
+        }
+      }
+    },
+
+    "SoundService": {
+      "$properties": {
+        "RespectFilteringEnabled": true
+      }
+    }
+  }
+}
