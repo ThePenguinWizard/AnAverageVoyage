@@ -1,6 +1,7 @@
 --!strict
 -- Builds the blocky enemy pirates for a battle. They are built on the client, so each player only sees the enemies
--- of their own encounter. Also holds the small effects played on them: health bar, lunge, flash, pop-up, topple.
+-- of their own encounter. Also holds the small effects played on them: lunge, flash, pop-up, topple. (Their HP
+-- bars are Client.Combat.Plates.)
 
 local EnemyModels = {}
 
@@ -75,7 +76,7 @@ function EnemyModels.build(id: string, info: any, feet: CFrame, parent: Instance
 		p.Material = material or Enum.Material.SmoothPlastic
 		p.Anchored = true
 		p.CanCollide = false
-		p.CanQuery = false
+		p.CanQuery = true -- so a click or tap on the enemy can pick it as the target
 		p.CanTouch = false
 		p.TopSurface = Enum.SurfaceType.Smooth
 		p.BottomSurface = Enum.SurfaceType.Smooth
@@ -146,52 +147,10 @@ function EnemyModels.build(id: string, info: any, feet: CFrame, parent: Instance
 
 	m.PrimaryPart = torso
 
-	local gui = Instance.new("BillboardGui")
-	gui.Name = "Nameplate"
-	gui.Size = UDim2.fromOffset(190, 40)
-	gui.StudsOffset = Vector3.new(0, 1.6 + 0.9 * k, 0)
-	gui.AlwaysOnTop = true
-	gui.MaxDistance = 400
-	gui.Adornee = head
-	local label = Instance.new("TextLabel")
-	label.Name = "Title"
-	label.Size = UDim2.new(1, 0, 0, 22)
-	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.Merriweather
-	label.TextSize = 16
-	label.TextColor3 = Color3.fromRGB(255, 246, 226)
-	label.TextStrokeTransparency = 0.4
-	label.Text = tostring(info.Name)
-	label.Parent = gui
-	local back = Instance.new("Frame")
-	back.Name = "BarBack"
-	back.AnchorPoint = Vector2.new(0.5, 0)
-	back.Position = UDim2.new(0.5, 0, 0, 25)
-	back.Size = UDim2.fromOffset(120, 9)
-	back.BackgroundColor3 = Color3.fromRGB(46, 34, 28)
-	back.BorderSizePixel = 0
-	back.Parent = gui
-	local bar = Instance.new("Frame")
-	bar.Name = "Bar"
-	bar.Size = UDim2.fromScale(1, 1)
-	bar.BackgroundColor3 = Color3.fromRGB(190, 60, 50)
-	bar.BorderSizePixel = 0
-	bar.Parent = back
-	gui.Parent = m
-
 	m:PivotTo(feet * CFrame.new(0, 3 * k, 0))
 	m:SetAttribute("Down", false)
 	m.Parent = parent
 	return m
-end
-
-function EnemyModels.setHealth(model: Model, hp: number, maxHp: number)
-	local gui = model:FindFirstChild("Nameplate")
-	local back = gui and gui:FindFirstChild("BarBack")
-	local bar = back and back:FindFirstChild("Bar")
-	if bar and bar:IsA("Frame") then
-		bar.Size = UDim2.fromScale(math.clamp(hp / math.max(1, maxHp), 0, 1), 1)
-	end
 end
 
 -- A short step toward the crew and back, played when the enemy attacks.
@@ -278,10 +237,6 @@ function EnemyModels.topple(model: Model)
 		if item:IsA("BasePart") then
 			item.Transparency = 0.6
 		end
-	end
-	local gui = model:FindFirstChild("Nameplate")
-	if gui and gui:IsA("BillboardGui") then
-		gui.Enabled = false
 	end
 end
 

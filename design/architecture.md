@@ -101,7 +101,9 @@ Effects are made in the `particles` place, not here. To bring one over: in parti
 
 ## UI conventions
 
-- Build every screen with `Shared.UI.Paper` (`Paper.screen`, `Paper.sheet`, `Paper.button`, `Paper.label`, `Paper.tab`, `Paper.Colors`, `Paper.Fonts`, `Paper.Layers`).
+- Build every screen with `Shared.UI.Paper` (`Paper.screen`, `Paper.sheet`, `Paper.button`, `Paper.label`, `Paper.tab`, `Paper.Colors`, `Paper.Fonts`, `Paper.Layers`), except battles.
+- Battles use `Shared.UI.Ink` (decision D17): black panels with a cream edge and red shards, comic numbers. Its art is cut from the UI sheets in `assets/ui/sheets` and uploaded as images; `Ink.Images` holds the asset ids. `Client.Combat.Plates` draws the HP plates over each fighter with it, and `Client.Combat.Menu` is the FIGHT / ITEMS / FOCUS command menu (cut-out letters built from text labels, no images).
 - One ScreenGui per controller, named `<Feature>Gui`.
 - Must be usable with mouse, keyboard, gamepad and touch. Minimum button height 44 px.
-- No uploaded images or sounds: draw with frames, strokes and text only.
+- No uploaded images outside the battle kit, and no sounds yet: Paper screens draw with frames, strokes and text only.
+- Adding battle art: put the sheet in `assets/ui/sheets`, cut it with `blender --background --factory-startup --python tools/ui/cut_sheet.py -- SHEET OUT_DIR`, copy the pieces you need into `assets/ui`, serve that folder on localhost and upload with the Studio MCP `upload_image` tool, then add the ids to `Ink.Images` (and a slice rect for anything 9-sliced). New art comes from ChatGPT (in Chrome): attach the sheets in `assets/ui/sheets` as a style guide, ask for flat vector pieces with hard edges on a transparent background, spaced apart so they cut cleanly, and ask for layers (slab, outline, shard, halftone, speed lines, burst) rather than finished panels so each layer can animate on its own. The prompts that made the current set are in that chat; its outputs are in `assets/ui/sheets/generated`. For a hollow bar frame, `tools/ui/bar_inside.py` makes the matching black backing and white fill shape.

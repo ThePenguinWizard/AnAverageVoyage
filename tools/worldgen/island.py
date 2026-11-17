@@ -141,16 +141,17 @@ def build_island(center=(0.0, 0.0, -360.0), seed=11):
     for side, sign, col in (("Crew", -1, CREW), ("Enemy", 1, ENEMY)):
         for rank in (1, 2):
             for slot in (1, 2, 3):
-                x = acx + sign * (2.0 + rank * 9.0)
-                z = acz + (2 - slot) * 8.0
+                x = acx + sign * (-1.0 + rank * 11.0)
+                z = acz + (2 - slot) * 10.0
                 arena.add(disc("%sR%dS%d" % (side, rank, slot), (x, ay + 0.36, z), 4.4, 0.12, col, collide=False,
                                transparency=0.35, shadow=False,
                                attrs={"BattleSlot": True, "Side": side, "Rank": rank, "Slot": slot}))
     # Low and close, looking down the aisle between the two sides, so each side's lines lean in toward the
-    # middle ("/ \") and the centre of the screen stays clear for the battle card. CombatController uses a
+    # middle ("/ \"). It tips up a little so the fighters sit in the lower half of the screen and the battle
+    # card at the top doesn't cover them. CombatController uses a
     # 66 degree field of view with it.
-    cam = (acx, ay + 10.0, acz + 28.0)
-    arena.add(Part("BattleCamera", (1, 1, 1), cam, look_at(cam, (acx, ay + 3.5, acz - 6.0)), collide=False,
+    cam = (acx, ay + 13.0, acz + 34.0)
+    arena.add(Part("BattleCamera", (1, 1, 1), cam, look_at(cam, (acx, ay + 9.5, acz - 7.0)), collide=False,
                    transparency=1, shadow=False, attrs={"CameraAnchor": True}))
     for k in range(4):
         a = math.pi / 4 + k * math.pi / 2

@@ -2,8 +2,11 @@
 -- Combat on the client: everything the player sees and does in a battle run by CombatService.
 --   * builds this player's enemy models on the arena (other players never see them) and removes them afterwards
 --   * holds the battle camera while the battle lasts, then lets go of it
---   * the parchment card: move menu, attack minigames (Combat/Minigames), dodge box (Combat/DodgeBox)
---   * HP and Resolve under the card, a narrator caption, grade and result banners
+--   * the command menu (Combat/Menu): FIGHT / ITEMS / FOCUS in cut-out letters beside this player's fighter; tap an
+--     enemy (or its plate) to target it
+--   * HP bars with numbers over every fighter (Combat/Plates)
+--   * the parchment card at the top: attack minigames (Combat/Minigames), dodge box (Combat/DodgeBox)
+--   * a narrator caption, grade and result banners
 --   * fail and breaking-point close-ups (Combat/CloseUp)
 --
 -- The server sends (event, state, detail) over CombatRemote; see the header of CombatService for the list. Events
@@ -12,7 +15,6 @@
 -- PROTOTYPE SHORTCUT (known): this client grades its own minigame and counts its own hits; the server only
 -- sanity-checks them.
 
-local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -21,6 +23,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Paper = require(Shared:WaitForChild("UI"):WaitForChild("Paper"))
+local Ink = require(Shared:WaitForChild("UI"):WaitForChild("Ink"))
 local Moves = require(Shared:WaitForChild("Combat"):WaitForChild("Moves"))
 
 local CombatFolder = script.Parent.Parent:WaitForChild("Combat")
@@ -28,18 +31,22 @@ local EnemyModels = require(CombatFolder:WaitForChild("EnemyModels"))
 local Minigames = require(CombatFolder:WaitForChild("Minigames"))
 local DodgeBox = require(CombatFolder:WaitForChild("DodgeBox"))
 local CloseUp = require(CombatFolder:WaitForChild("CloseUp"))
+local Plates = require(CombatFolder:WaitForChild("Plates"))
+local Anim = require(CombatFolder:WaitForChild("Anim"))
+local Menu = require(CombatFolder:WaitForChild("Menu"))
 
 local CombatController = {}
 
-local CARD_WIDTH = 440
-local BODY_WIDTH = CARD_WIDTH - 26 -- the sheet's double border takes 13 px on each side
+local CARD_WIDTH = 494
+local BODY_WIDTH = 414 -- the page inside the card; the black frame around it takes CARD_FRAME px on each side
+local CARD_FRAME = 40
 local FIELD_SIZE = 280
 local STATUS_HEIGHT = 58
 local CAMERA_BINDING = "CombatCamera"
 local ENEMY_FOLDER = "CombatEnemies"
 
 type Token = { cancelled: boolean }
-type EnemyView = { id: string, name: string, hp: number, maxHp: number, model: Model? }
+type EnemyView = { id: string, name: string, hp: number, maxHp: number, model: Model?, plate: Plates.Plate? }
 type QueueItem = { event: string, state: any, detail: any }
 
 local player = Players.LocalPlayer
@@ -53,6 +60,9 @@ local inBattle = false
 local enemies: { EnemyView } = {}
 local selectedTarget: number? = nil
 local cameraBound = false
+local crewPlates: { [Player]: { plate: Plates.Plate, head: BasePart } } = {}
+local closeRing: (() -> ())? = nil -- takes down the command menu, if it is up
+local battleCount = 0
 
 -- UI, built once in start()
 local gui: ScreenGui
@@ -66,7 +76,13 @@ local hpBar: Frame
 local resolveLabel: TextLabel
 local resolveBar: Frame
 local caption: TextLabel
-local banner: TextLabel
+local captionPanel: Frame
+local captionBox: Ink.Box
+local banner: Frame
+local bannerBadge: ImageLabel
+local bannerMark: ImageLabel
+local cardFrame: Ink.Box? = nil
+local bannerText: TextLabel
 local targetHighlight: Highlight? = nil
 
 local cardVersion = 0
@@ -111,11 +127,6 @@ local function currentCondition(): any
 	return nil
 end
 
-local function usingGamepad(): boolean
-	local last = UserInputService:GetLastInputType()
-	return string.sub(last.Name, 1, 7) == "Gamepad"
-end
-
 ------------------------------------------------------------------------------------------------------------------
 -- Status strip, caption, banner
 ------------------------------------------------------------------------------------------------------------------
@@ -142,16 +153,51 @@ local function refreshStatus()
 	resolveBar.BackgroundColor3 = if resolve >= Moves.Resolve.Break then Paper.Colors.Red else Paper.Colors.Gold
 end
 
+local captionVersion = 0
+-- The narrator line types itself out, and its box gives a small kick when the line changes.
 local function setCaption(text: string)
+	captionVersion += 1
+	local version = captionVersion
 	caption.Text = text
+	local wasShown = captionPanel.Visible
+	captionPanel.Visible = text ~= ""
+	if text == "" then
+		return
+	end
+	if wasShown then
+		Anim.punch(captionPanel, 0.04)
+	else
+		Anim.boxIn(captionBox)
+	end
+	caption.MaxVisibleGraphemes = 0
+	task.spawn(function()
+		local length = utf8.len(text) or #text
+		local shown = 0
+		while shown < length and captionVersion == version do
+			shown = math.min(length, shown + 3)
+			caption.MaxVisibleGraphemes = shown
+			task.wait(0.016)
+		end
+		if captionVersion == version then
+			caption.MaxVisibleGraphemes = -1
+		end
+	end)
 end
 
+-- A banner in the gap between the two sides. Red ones are bad news (a damage number gets the "!" art, anything
+-- else the cross); the rest get the star.
+local BANNER_SIZE = Vector2.new(470, 89) -- the banner art is 1468 x 278 px
 local function showBanner(text: string, color: Color3, seconds: number)
 	bannerVersion += 1
 	local version = bannerVersion
-	banner.Text = text
-	banner.TextColor3 = color
+	local bad = color == Paper.Colors.Red
+	bannerMark.Image = if bad then (if string.sub(text, 1, 1) == "-" then Ink.Images.MarkAlert else Ink.Images.MarkX) else Ink.Images.Star
+	bannerText.Text = text
+	bannerText.TextColor3 = if color == Paper.Colors.Gold then Ink.Colors.Gold elseif bad then Color3.fromRGB(255, 96, 88) else Ink.Colors.Cream
 	banner.Visible = true
+	Anim.slamIn(banner, not bad)
+	Anim.popIn(bannerBadge, 0.08)
+	Anim.punch(bannerMark, 0.5)
 	task.delay(seconds, function()
 		if bannerVersion == version then
 			banner.Visible = false
@@ -180,8 +226,12 @@ local function showCard(height: number)
 	cardHeight = height
 	body.Size = UDim2.fromOffset(BODY_WIDTH, height - 26)
 	sheet.Visible = true
+	Anim.punch(sheet, 0.06)
+	if cardFrame then
+		Anim.boxIn(cardFrame)
+	end
 	updateScale()
-	TweenService:Create(sheet, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(CARD_WIDTH, height) }):Play()
+	TweenService:Create(sheet, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(CARD_WIDTH, height + 2 * CARD_FRAME - 26) }):Play()
 end
 
 local function hideCard()
@@ -224,14 +274,89 @@ local function highlightTarget(index: number?)
 	end
 end
 
+-- Makes enemy `index` the target: its plate shows its name in gold and the model gets an outline.
+local function setTarget(index: number?)
+	if index and (not enemies[index] or enemies[index].hp <= 0) then
+		return
+	end
+	selectedTarget = index
+	for i, enemy in enemies do
+		if enemy.plate then
+			local on = i == index
+			enemy.plate.setTarget(on)
+			enemy.plate.setName(if on then enemy.name else "")
+		end
+	end
+	highlightTarget(index)
+end
+
+-- Steps the target to the next (or previous) enemy still standing.
+local function cycleTarget(step: number)
+	local count = #enemies
+	if count == 0 then
+		return
+	end
+	local start = selectedTarget or 0
+	for offset = 1, count do
+		local i = (start - 1 + offset * step) % count + 1
+		if enemies[i] and enemies[i].hp > 0 then
+			setTarget(i)
+			return
+		end
+	end
+end
+
 local function removeEnemies()
 	clearTargetHighlight()
+	for _, enemy in enemies do
+		if enemy.plate then
+			enemy.plate.destroy()
+		end
+	end
 	local folder = workspace:FindFirstChild(ENEMY_FOLDER)
 	if folder then
 		folder:Destroy()
 	end
 	enemies = {}
 	selectedTarget = nil
+end
+
+-- HP bars over the crew: everyone whose Location is "Battle" (this player and crewmates), kept in step with
+-- their HP, MaxHP and Resolve attributes.
+local function refreshCrewPlates()
+	for other, entry in crewPlates do
+		local character = other.Character
+		local head = character and character:FindFirstChild("Head")
+		if not inBattle or other.Parent == nil or (other ~= player and other:GetAttribute("Location") ~= "Battle") or head ~= entry.head then
+			entry.plate.destroy()
+			crewPlates[other] = nil
+		end
+	end
+	if not inBattle then
+		return
+	end
+	for _, other in Players:GetPlayers() do
+		if other ~= player and other:GetAttribute("Location") ~= "Battle" then
+			continue
+		end
+		local character = other.Character
+		local head = character and character:FindFirstChild("Head")
+		if not head or not head:IsA("BasePart") then
+			continue
+		end
+		local entry = crewPlates[other]
+		if not entry then
+			local plate = Plates.new(head, "Crew")
+			plate.setName(if other == player then "You" else "")
+			entry = { plate = plate, head = head }
+			crewPlates[other] = entry
+		end
+		local maxHp = other:GetAttribute("MaxHP")
+		local hp = other:GetAttribute("HP")
+		local resolve = other:GetAttribute("Resolve")
+		local top = if type(maxHp) == "number" then maxHp else Moves.PlayerMaxHP
+		entry.plate.set(if type(hp) == "number" then hp else top, top, if type(resolve) == "number" then resolve else 0)
+	end
 end
 
 local function firstStanding(): number?
@@ -250,16 +375,20 @@ local function applyState(state: any)
 			local enemy = enemies[i]
 			if enemy and type(hp) == "number" then
 				enemy.hp = hp
-				if enemy.model then
-					EnemyModels.setHealth(enemy.model, hp, enemy.maxHp)
-					if hp <= 0 then
-						EnemyModels.topple(enemy.model)
-					end
+				if enemy.plate then
+					enemy.plate.set(hp, enemy.maxHp)
+				end
+				if enemy.model and hp <= 0 then
+					EnemyModels.topple(enemy.model)
 				end
 			end
 		end
+		if selectedTarget and enemies[selectedTarget] and enemies[selectedTarget].hp <= 0 then
+			setTarget(firstStanding())
+		end
 	end
 	refreshStatus()
+	refreshCrewPlates()
 end
 
 local function holdCamera(cf: CFrame)
@@ -302,8 +431,12 @@ end
 -- Packs everything up at the end of a battle.
 local function closeBattle()
 	inBattle = false
+	if closeRing then
+		closeRing()
+	end
 	releaseCamera()
 	removeEnemies()
+	refreshCrewPlates()
 	cardVersion += 1
 	bannerVersion += 1
 	if battleRoot then
@@ -356,7 +489,15 @@ local function onBegin(state: any, detail: any)
 				local ok, result = pcall(EnemyModels.build, entry.id, info, entry.cf, folder)
 				if ok then
 					view.model = result
-					EnemyModels.setHealth(result, view.hp, view.maxHp)
+					local head = result:FindFirstChild("Head")
+					if head and head:IsA("BasePart") then
+						local plate = Plates.new(head, "Enemy")
+						plate.set(view.hp, view.maxHp)
+						plate.button.Activated:Connect(function()
+							setTarget(i)
+						end)
+						view.plate = plate
+					end
 				else
 					warn(("[Combat] could not build %s: %s"):format(entry.id, tostring(result)))
 				end
@@ -368,7 +509,109 @@ local function onBegin(state: any, detail: any)
 		holdCamera(detail.camera)
 	end
 	applyState(state)
+	setTarget(firstStanding())
 	setCaption(INTRO_LINES[detail.kind] or INTRO_LINES.Battle)
+
+	-- Crewmates may reach their spots a moment after the battle starts; keep their plates in step.
+	battleCount += 1
+	local thisBattle = battleCount
+	task.spawn(function()
+		while inBattle and battleCount == thisBattle do
+			refreshCrewPlates()
+			task.wait(0.5)
+		end
+	end)
+end
+
+-- Puts the command menu (Combat/Menu) beside this player's fighter and waits for a pick: FIGHT holds the weapon's
+-- moves, FOCUS holds Brace, ITEMS is empty until items can be used in battle. Q / E (or the shoulder buttons) step
+-- the target. Returns a move id, "Brace", or nil when the turn ended first.
+local function chooseMove(moveIds: { string }, canBrace: boolean, my: Token): string?
+	local choice: string? = nil
+	local fight: { Menu.Entry } = {}
+	for _, id in moveIds do
+		local move = (Moves.Player :: any)[id]
+		table.insert(fight, {
+			id = id,
+			title = string.upper(tostring(move.Name)),
+			caption = ("%s  ·  %d damage"):format(tostring(move.Label), move.Damage or 0),
+			enabled = true,
+		})
+	end
+	local groups: { Menu.Group } = {
+		{ title = "FIGHT", caption = "Attack the target.", entries = fight },
+		{
+			title = "ITEMS",
+			caption = "Use something from your bag.",
+			entries = { { id = "NoItems", title = "NOTHING YET", caption = "Items can't be used in battle yet.", enabled = false } },
+		},
+		{
+			title = "FOCUS",
+			caption = "Steady yourself for the enemy's turn.",
+			entries = {
+				{
+					id = "Brace",
+					title = "BRACE",
+					caption = if canBrace then "Brace: take less damage until your next turn." else "Too reckless to brace right now.",
+					enabled = canBrace,
+					note = if canBrace then nil else "too reckless",
+				},
+			},
+		},
+	}
+
+	local menu = Menu.open(battleRoot, groups, {
+		anchor = function(): Vector2?
+			local camera = workspace.CurrentCamera
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if camera and root and root:IsA("BasePart") then
+				local point, onScreen = camera:WorldToViewportPoint(root.Position)
+				if onScreen then
+					return Vector2.new(point.X, point.Y)
+				end
+			end
+			return nil
+		end,
+		onHover = function(text: string)
+			setCaption(text)
+		end,
+		onPick = function(id: string)
+			choice = choice or id
+		end,
+	})
+
+	local keys = UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
+		if processed then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.ButtonL1 then
+			cycleTarget(-1)
+		elseif input.KeyCode == Enum.KeyCode.E or input.KeyCode == Enum.KeyCode.ButtonR1 then
+			cycleTarget(1)
+		end
+	end)
+
+	local open = true
+	local function close()
+		if not open then
+			return
+		end
+		open = false
+		keys:Disconnect()
+		menu.close(choice)
+		if closeRing == close then
+			closeRing = nil
+		end
+	end
+	closeRing = close
+
+	-- Wait for a choice. If the server moves on by itself (the turn timer ran out), stop waiting.
+	while choice == nil and not my.cancelled and #queue == 0 do
+		task.wait(0.03)
+	end
+	close()
+	return choice
 end
 
 local function onPlayerTurn(state: any, detail: any, my: Token)
@@ -381,102 +624,22 @@ local function onPlayerTurn(state: any, detail: any, my: Token)
 			end
 		end
 	end
-	local standing: { number } = {}
-	for i, enemy in enemies do
-		if enemy.hp > 0 then
-			table.insert(standing, i)
-		end
-	end
 	if not selectedTarget or not enemies[selectedTarget] or enemies[selectedTarget].hp <= 0 then
-		selectedTarget = firstStanding()
+		setTarget(firstStanding())
+	else
+		setTarget(selectedTarget)
 	end
 
-	local rows = math.max(#standing, #moveIds + 1)
-	local height = 26 + 48 + rows * 50 + 6
-	body:ClearAllChildren()
-	Paper.label(body, "Your move", 22, { Position = UDim2.fromOffset(8, 4), Size = UDim2.new(0.5, -8, 0, 30), TextXAlignment = Enum.TextXAlignment.Left })
-	Paper.label(body, ("Round %d"):format(if type(state) == "table" and type(state.round) == "number" then state.round else 1), 20, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -8, 0, 6),
-		Size = UDim2.new(0.5, -8, 0, 28),
-		Font = Paper.Fonts.Hand,
-		TextXAlignment = Enum.TextXAlignment.Right,
-	})
-
-	local columnWidth = (BODY_WIDTH - 24) / 2
-	local targetButtons: { [number]: TextButton } = {}
-	local function styleTargets()
-		for index, button in targetButtons do
-			local chosen = index == selectedTarget
-			button.BackgroundColor3 = if chosen then Paper.Colors.Ink else Paper.Colors.Paper
-			button.TextColor3 = if chosen then Paper.Colors.Paper else Paper.Colors.Ink
-		end
-		highlightTarget(selectedTarget)
-	end
-	for row, index in standing do
-		local enemy = enemies[index]
-		local button = Paper.button(body, ("%s   %d / %d"):format(enemy.name, enemy.hp, enemy.maxHp), {
-			Position = UDim2.fromOffset(8, 44 + (row - 1) * 50),
-			Size = UDim2.fromOffset(columnWidth, 44),
-			TextSize = 14,
-			TextWrapped = true,
-		})
-		targetButtons[index] = button
-		button.Activated:Connect(function()
-			selectedTarget = index
-			styleTargets()
-		end)
-	end
-	styleTargets()
-
-	local choice: string? = nil -- a move id, or "Brace"
-	local firstButton: TextButton? = nil
-	for row, id in moveIds do
-		local move = (Moves.Player :: any)[id]
-		local button = Paper.button(body, ("%s   ·   %d"):format(tostring(move.Name), move.Damage), {
-			Position = UDim2.fromOffset(16 + columnWidth, 44 + (row - 1) * 50),
-			Size = UDim2.fromOffset(columnWidth, 44),
-			TextSize = 16,
-		})
-		firstButton = firstButton or button
-		button.Activated:Connect(function()
-			choice = choice or id
-		end)
-	end
-	local canBrace = detail.canBrace ~= false
-	local brace = Paper.button(body, if canBrace then "Brace" else "Brace  (too reckless)", {
-		Position = UDim2.fromOffset(16 + columnWidth, 44 + #moveIds * 50),
-		Size = UDim2.fromOffset(columnWidth, 44),
-		TextSize = 16,
-		BackgroundColor3 = Paper.Colors.PaperDark,
-		TextColor3 = if canBrace then Paper.Colors.Ink else Paper.Colors.Pale,
-		Active = canBrace,
-		AutoButtonColor = canBrace,
-	})
-	if canBrace then
-		brace.Activated:Connect(function()
-			choice = choice or "Brace"
-		end)
-	end
-
-	showCard(height)
-	setCaption("Pick a target and a move, or brace to take a third less damage this round.")
-	if usingGamepad() and firstButton then
-		GuiService.SelectedObject = firstButton
-	end
-
-	-- Wait for a choice. If the server moves on by itself (the turn timer ran out), stop waiting.
-	while choice == nil and not my.cancelled and #queue == 0 do
-		task.wait(0.03)
-	end
-	clearTargetHighlight()
+	local round = if type(state) == "table" and type(state.round) == "number" then state.round else 1
+	Anim.sweep(battleRoot, "YOUR TURN")
+	setCaption(("Round %d. Pick a move. Tap an enemy to change who you hit."):format(round))
+	local choice = chooseMove(moveIds, detail.canBrace ~= false, my)
 	if my.cancelled or choice == nil then
 		return
 	end
 
 	if choice == "Brace" then
 		send("Brace")
-		hideCard()
 		return
 	end
 
@@ -719,9 +882,40 @@ local function buildGui()
 	local content: Frame
 	sheet, content = Paper.sheet(stage, { Name = "Card", Size = UDim2.fromOffset(CARD_WIDTH, 10), ClipsDescendants = true, Visible = false, LayoutOrder = 1 })
 	body = Paper.frame(content, { Name = "Body", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromOffset(BODY_WIDTH, 100), BackgroundTransparency = 1 })
+	-- Dressed in the battle kit: a black panel with a cream edge and red shards, around a cream page that the
+	-- minigames and the dodge box draw on (they draw in ink, for paper).
+	sheet.BackgroundTransparency = 1
+	for _, item in sheet:GetDescendants() do
+		if item:IsA("UIStroke") then
+			item.Enabled = false
+		end
+	end
+	local border = sheet:FindFirstChild("Border")
+	if border and border:IsA("Frame") then
+		local inset = 2 * (CARD_FRAME - 6) -- the page sits CARD_FRAME px in from each edge
+		border.Size = UDim2.new(1, -inset, 1, -inset)
+	end
+	-- The frame is a layered box kept inside the card (the card clips while it unfolds): the red shard peeks out
+	-- around the slab, and the halftone sits over the page's corner.
+	local frame = Ink.box(sheet, { Name = "Frame", Size = UDim2.fromScale(1, 1) }, 0, 0.55)
+	frame.shard.Position = UDim2.new(0.5, 3, 0.5, 3)
+	frame.shard.Size = UDim2.new(1, -2, 1, -2)
+	frame.slab.Size = UDim2.new(1, -16, 1, -16)
+	frame.outline.Position = UDim2.fromScale(0.5, 0.5)
+	frame.outline.Size = UDim2.new(1, -10, 1, -10)
+	frame.halftone.Position = UDim2.new(1, -14, 1, -12)
+	frame.halftone.Size = UDim2.fromOffset(96, 64)
+	frame.halftone.ZIndex = 8
+	frame.speed.Visible = false
+	cardFrame = frame
+	if border then
+		border.ZIndex = 5
+	end
+	content.BackgroundTransparency = 0
+	content.BackgroundColor3 = Ink.Colors.Cream
 
-	-- HP and Resolve, just under the card
-	local status = Paper.frame(stage, { Name = "Status", Size = UDim2.fromOffset(CARD_WIDTH, STATUS_HEIGHT), BackgroundColor3 = Paper.Colors.Paper, LayoutOrder = 2 })
+	-- HP and Resolve under the card. Hidden for now: the plates over each fighter and the HUD show the same numbers.
+	local status = Paper.frame(stage, { Name = "Status", Size = UDim2.fromOffset(CARD_WIDTH, STATUS_HEIGHT), BackgroundColor3 = Paper.Colors.Paper, LayoutOrder = 2, Visible = false })
 	Paper.make("UIStroke", { Color = Paper.Colors.Ink, Thickness = 2 }, status)
 	local half = (CARD_WIDTH - 36) / 2
 	hpLabel = Paper.label(status, "HP", 15, { Position = UDim2.fromOffset(12, 6), Size = UDim2.fromOffset(half, 22), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false })
@@ -736,33 +930,81 @@ local function buildGui()
 	-- the breaking point, halfway along the bar
 	Paper.frame(resolveBack, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(Moves.Resolve.Break / Moves.Resolve.Max, 0.5), Size = UDim2.new(0, 2, 1, 6), BackgroundColor3 = Paper.Colors.Ink, ZIndex = 2 })
 
-	caption = Paper.label(battleRoot, "", 20, {
-		Name = "Caption",
+	-- The narrator's line, in a layered black box along the bottom of the screen.
+	captionBox = Ink.box(battleRoot, {
+		Name = "CaptionPanel",
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -14),
-		Size = UDim2.new(0.86, 0, 0, 52),
-		TextColor3 = Paper.Colors.Light,
-		TextStrokeTransparency = 0.3,
-		TextYAlignment = Enum.TextYAlignment.Bottom,
-		ZIndex = 3,
+		Position = UDim2.new(0.5, 0, 1, -12),
+		Size = UDim2.new(0.6, 0, 0, 74),
+		Visible = false,
+	}, 3, 0.42)
+	captionPanel = captionBox.root
+	Ink.make("UISizeConstraint", { MinSize = Vector2.new(320, 74), MaxSize = Vector2.new(860, 74) }, captionPanel)
+	caption = Ink.text(captionPanel, "", 18, {
+		Name = "Caption",
+		Position = UDim2.fromOffset(46, 14),
+		Size = UDim2.new(1, -110, 1, -28),
+		TextWrapped = true,
+		TextScaled = false,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		TextStrokeTransparency = 1,
+		ZIndex = 8,
 	})
-	-- In the open gap between the two sides (the card sits at the top of the screen).
-	banner = Paper.label(battleRoot, "", 44, {
+	Ink.make("UITextSizeConstraint", { MaxTextSize = 18, MinTextSize = 11 }, caption)
+
+	-- Banners show in the open gap between the two sides (the card sits at the top of the screen): a banner slab,
+	-- a starburst badge on its left end with a symbol in it, and the words.
+	banner = Ink.make("Frame", {
 		Name = "Banner",
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.6),
-		Size = UDim2.new(0.9, 0, 0, 60),
-		TextColor3 = Paper.Colors.Light,
-		TextStrokeTransparency = 0.2,
-		TextWrapped = false,
+		Position = UDim2.fromScale(0.5, 0.56),
+		Size = UDim2.fromOffset(BANNER_SIZE.X, BANNER_SIZE.Y),
+		BackgroundTransparency = 1,
 		Visible = false,
-		ZIndex = 4,
+		ZIndex = 5,
+	}, battleRoot)
+	Ink.image(banner, "Banner", { Name = "Slab", Size = UDim2.fromScale(1, 1), ZIndex = 5 })
+	bannerBadge = Ink.image(banner, "Badge", {
+		Name = "Badge",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.07, 0.5),
+		Size = UDim2.fromOffset(108, 101), -- the badge art is 318 x 298 px
+		ZIndex = 6,
+	})
+	bannerMark = Ink.image(bannerBadge, "Star", {
+		Name = "Mark",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.62, 0.62),
+		ZIndex = 7,
+	})
+	bannerText = Ink.text(banner, "", 40, {
+		Name = "Text",
+		Position = UDim2.fromScale(0.17, 0.14),
+		Size = UDim2.fromScale(0.76, 0.72),
+		FontFace = Ink.Fonts.Display,
+		TextScaled = true,
+		ZIndex = 7,
 	})
 end
 
 function CombatController.start()
 	buildGui()
 	refreshStatus()
+
+	-- Load the battle art now, so banners and tiles don't pop in blank the first time they show.
+	task.spawn(function()
+		local labels: { Instance } = {}
+		for _, id in Ink.Images do
+			local label = Instance.new("ImageLabel")
+			label.Image = id
+			table.insert(labels, label)
+		end
+		pcall(function()
+			game:GetService("ContentProvider"):PreloadAsync(labels)
+		end)
+	end)
 
 	local lastCondition = player:GetAttribute("Condition")
 	for _, name in { "HP", "MaxHP", "Resolve" } do
@@ -784,6 +1026,35 @@ function CombatController.start()
 	if camera then
 		camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
 	end
+
+	-- A click or tap on an enemy's body picks it as the target (its plate works too).
+	UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
+		if processed or not inBattle then
+			return
+		end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		local cam = workspace.CurrentCamera
+		local folder = workspace:FindFirstChild(ENEMY_FOLDER)
+		if not cam or not folder then
+			return
+		end
+		local ray = cam:ScreenPointToRay(input.Position.X, input.Position.Y)
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Include
+		params.FilterDescendantsInstances = { folder }
+		local hit = workspace:Raycast(ray.Origin, ray.Direction * 500, params)
+		if not hit then
+			return
+		end
+		for i, enemy in enemies do
+			if enemy.model and hit.Instance:IsDescendantOf(enemy.model) then
+				setTarget(i)
+				return
+			end
+		end
+	end)
 
 	local found = ReplicatedStorage:WaitForChild("CombatRemote", 60)
 	if not found or not found:IsA("RemoteEvent") then

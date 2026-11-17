@@ -239,6 +239,13 @@ function HudController.start()
 	for name, refresh in watched do
 		player:GetAttributeChangedSignal(name):Connect(refresh)
 	end
+
+	-- Battles have their own HP plates (Client.Combat.Plates), so the HUD steps aside while one runs.
+	local function refreshVisible()
+		gui.Enabled = player:GetAttribute("Location") ~= "Battle"
+	end
+	player:GetAttributeChangedSignal("Location"):Connect(refreshVisible)
+	refreshVisible()
 	refreshHealth()
 	refreshResolve()
 	refreshMoney()
