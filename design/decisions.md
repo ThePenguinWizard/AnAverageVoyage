@@ -177,12 +177,12 @@ Every weapon has its own attack minigame. Subclasses reuse their parent weapon's
 
 | Weapon | When | Rank | Attack minigame | Identity |
 |---|---|---|---|---|
-| Sword | Prototype | Front or middle | Timing-bar slash, like Undertale's FIGHT | Reliable damage, breaks guards |
-| Gun | Prototype | Back | A drifting crosshair: fire when it's over the weak point | Hits enemies' back ranks, trick ammo (smoke, fire, nets), weak if pulled forward |
-| Fist | Prototype | Front | A short rhythm combo | Multi-hit, knocks enemies out of their ranks, buffs itself |
+| Sword | Prototype | Front | Timing-bar slash, like Undertale's FIGHT | Reliable damage, breaks guards |
+| Gun | Prototype | Back | A drifting crosshair: fire when it's over the weak point | Hits enemies' back line, trick ammo (smoke, fire, nets), weak if pulled forward |
+| Fist | Prototype | Front | A short rhythm combo | Multi-hit, knocks enemies out of their line, buffs itself |
 | Shield (with a sidearm) | Launch | Front | A simple timed bash | Taunt: pulls enemy attacks onto itself. Its real skill test is the dodge box. |
-| Harpoon / Spear | Launch | Front or middle | Charge and release: hold, then let go in the sweet spot | Hits two ranks deep, drags back-row enemies forward |
-| Weather Staff | Later | Middle or back | Trace a shape (swipe-friendly on phones) | Area attacks, plus weather that changes the next dodge box (rain slows bullets, wind pushes them sideways) |
+| Harpoon / Spear | Launch | Front | Charge and release: hold, then let go in the sweet spot | Reaches the back line, drags back-line enemies forward |
+| Weather Staff | Later | Back | Trace a shape (swipe-friendly on phones) | Area attacks, plus weather that changes the next dodge box (rain slows bullets, wind pushes them sideways) |
 | Daggers | Later | Any | Reaction taps: targets pop up and you tap them fast | Crits, poison, stealing gold and items |
 
 Subclass candidates:
@@ -289,7 +289,7 @@ Fruits and Will are never sold for Robux. Monetization stays at AAC's level: met
 **Decided:** 2026-11-14
 
 - Crews hold **1–6 players**, and the run place's max players is 6. The harbor lobby stays at about 50.
-- **Formation:** Darkest Dungeon's 4 single ranks can't hold 6 characters. Starting point: **3 ranks (front, middle, back) with 2 slots each**. Rank-gated skills check the rank, not the slot.
+- **Formation:** Darkest Dungeon's 4 single ranks can't hold 6 characters. Each side stands in **2 lines (front and back) of 3**: a front-line column and a back-line column. Rank-gated skills check the line, not the slot. (Changed 2026-11-17; it started as 3 ranks of 2.)
 - **Enemy scaling:** start from AAC's numbers (+12.5% enemy attack and +50% enemy HP per extra player) and tune down if 6-player fights drag.
 - **Round time:** six players means more dodges per round. Weak enemies attacking together as one dodge (D6) goes from a suggestion to something to build early.
 
@@ -329,7 +329,7 @@ AAC's campfire camp moves onto the crew's ship. AAC's camp menus (Stash, Craft, 
 - **Mood by sea:** Sea 1 "Calm Blues" is bright midday, Sea 2 "Golden Route" is golden dusk, and Sea 3 "Storm Sea" is dim and stormy with a slight green tint. Each preset covers lighting, atmosphere, clouds, water color, waves and post-effects. Set Workspace's `SeaPreset` attribute to switch; in-game it tweens over 4 s.
 - **Battle island arena:**
   - Crew on the left, enemies on the right, seen from a three-quarter camera.
-  - Each side has 3 ranks × 2 slots, matching D9. Slot markers carry `BattleSlot`, `Side`, `Rank` and `Slot` attributes.
+  - Each side has 2 lines × 3 slots (Rank 1 = front, 2 = back; Slot 1 is nearest the camera), matching D9. Slot markers carry `BattleSlot`, `Side`, `Rank` and `Slot` attributes.
   - The camera's position is a part with a `CameraAnchor` attribute.
 - **Island extras:**
   - A dock on the side facing the ships.

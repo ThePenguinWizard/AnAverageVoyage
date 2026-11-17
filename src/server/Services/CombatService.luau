@@ -69,8 +69,12 @@ end
 
 local arenaLoaded = false
 local cameraCFrame: CFrame? = nil
+-- Each side stands in two lines of three (decision D9): rank 1 is the front line, rank 2 the back line. Slot 1 is
+-- nearest the camera; slots fill middle first so a lone fighter stands in the centre.
+local RANKS = 2
+local SLOT_ORDER = { 2, 1, 3 }
 local crewSlots: { CFrame } = {}
-local enemySlots: { [string]: CFrame } = {}
+local enemySlots: { [string]: CFrame } = {} -- "rank:slot" -> where that enemy stands
 
 ------------------------------------------------------------------------------------------------------------------
 -- Player attributes
@@ -193,7 +197,7 @@ local function loadArena()
 	if camPart and camPart:IsA("BasePart") then
 		cameraCFrame = camPart.CFrame
 	end
-	local crew: { [number]: CFrame } = {}
+	local crew: { [string]: CFrame } = {}
 	for _, part in arena:GetDescendants() do
 		if part:IsA("BasePart") then
 			local side = part:GetAttribute("Side")
@@ -202,16 +206,20 @@ local function loadArena()
 			if type(side) == "string" and type(rank) == "number" and type(slot) == "number" then
 				local pos = part.Position + Vector3.new(0, 0.1, 0)
 				if side == "Crew" then
-					crew[(rank - 1) * 2 + slot] = CFrame.lookAt(pos, pos + Vector3.new(1, 0, 0))
+					crew[rank .. ":" .. slot] = CFrame.lookAt(pos, pos + Vector3.new(1, 0, 0))
 				elseif side == "Enemy" then
 					enemySlots[rank .. ":" .. slot] = CFrame.lookAt(pos, pos + Vector3.new(-1, 0, 0))
 				end
 			end
 		end
 	end
-	for index = 1, 6 do
-		if crew[index] then
-			table.insert(crewSlots, crew[index])
+	-- The crew fills the front line first, middle slot first, then the back line.
+	for rank = 1, RANKS do
+		for _, slot in SLOT_ORDER do
+			local cf = crew[rank .. ":" .. slot]
+			if cf then
+				table.insert(crewSlots, cf)
+			end
 		end
 	end
 end
@@ -282,8 +290,8 @@ local function buildEnemies(ids: { any }): { EnemyState }
 			break
 		end
 		local cf: CFrame? = nil
-		for _, rank in { info.Rank, 1, 2, 3 } do
-			for slot = 1, 2 do
+		for _, rank in { info.Rank, 1, 2 } do
+			for _, slot in SLOT_ORDER do
 				local key = rank .. ":" .. slot
 				if enemySlots[key] and not taken[key] then
 					taken[key] = true

@@ -12,7 +12,7 @@
 --   Moves.Encounters.Elite      a list of encounters, same shape
 --   Moves.Encounters.Boss.Sea1  one encounter (a list of enemy ids); also .Sea2 and .Sea3
 -- Example: CombatService.startBattle(player, { Kind = "Elite", Enemies = Moves.Encounters.Elite[1] })
--- An encounter holds at most six enemies (three ranks of two slots).
+-- An encounter holds at most six enemies (a front line and a back line of three).
 --
 -- Player moves are graded by an attack minigame (decision D3): Perfect 130%, Good 100%, Fail 0%.
 -- Enemy moves are patterns drawn on the parchment dodge card (D6, D13).
@@ -612,7 +612,7 @@ export type Enemy = {
 	MaxHP: number,
 	Moves: { string }, -- ids in Moves.Enemy; one is picked for each attack
 	Weapon: string, -- what the model holds: Cutlass, Flintlock, Bomb, Club, Harpoon, Rapier or Cannon
-	Rank: number, -- preferred rank on the enemy side (1 = front, 3 = back)
+	Rank: number, -- preferred line on the enemy side (1 = front, 2 = back)
 }
 
 Moves.Enemies = {

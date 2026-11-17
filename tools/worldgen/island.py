@@ -129,23 +129,28 @@ def build_island(center=(0.0, 0.0, -360.0), seed=11):
                           (cx + sx * rnd.uniform(7.5, 9.5), 1.2 + j * 1.6, cz + rs + j * 4.0)))
 
     # ---------------------------------------------------------- arena
-    arena = m.add(Model("BattleArena", attrs={"Arena": True, "Formation": "3 ranks x 2 slots"}))
+    arena = m.add(Model("BattleArena", attrs={"Arena": True, "Formation": "2 ranks x 3 slots"}))
     acx, acz, ay = cx, cz - 14.0, 6.0
     arena.add(disc("ArenaFloor", (acx, ay + 0.15, acz), 94, 0.3, DIRT, "Ground"))
     for k in range(28):
         a = k * math.tau / 28 + rnd.uniform(-0.04, 0.04)
         s = rnd.uniform(1.8, 3.2)
         arena.add(rock(rnd, "RingStone", (s, s * 0.8, s), (acx + math.sin(a) * 47.5, ay + 0.6, acz + math.cos(a) * 47.5)))
+    # Each side stands in two columns of three: rank 1 is the front line (nearest the middle), rank 2 the back
+    # line. Slot 1 is nearest the camera, slot 3 the farthest.
     for side, sign, col in (("Crew", -1, CREW), ("Enemy", 1, ENEMY)):
-        for rank in (1, 2, 3):
-            for slot in (1, 2):
-                x = acx + sign * (3.0 + rank * 7.0)
-                z = acz + (4.5 if slot == 1 else -4.5)
+        for rank in (1, 2):
+            for slot in (1, 2, 3):
+                x = acx + sign * (2.0 + rank * 9.0)
+                z = acz + (2 - slot) * 8.0
                 arena.add(disc("%sR%dS%d" % (side, rank, slot), (x, ay + 0.36, z), 4.4, 0.12, col, collide=False,
                                transparency=0.35, shadow=False,
                                attrs={"BattleSlot": True, "Side": side, "Rank": rank, "Slot": slot}))
-    cam = (acx, ay + 28.0, acz + 72.0)
-    arena.add(Part("BattleCamera", (1, 1, 1), cam, look_at(cam, (acx, ay + 3.0, acz - 2.0)), collide=False,
+    # Low and close, looking down the aisle between the two sides, so each side's lines lean in toward the
+    # middle ("/ \") and the centre of the screen stays clear for the battle card. CombatController uses a
+    # 66 degree field of view with it.
+    cam = (acx, ay + 10.0, acz + 28.0)
+    arena.add(Part("BattleCamera", (1, 1, 1), cam, look_at(cam, (acx, ay + 3.5, acz - 6.0)), collide=False,
                    transparency=1, shadow=False, attrs={"CameraAnchor": True}))
     for k in range(4):
         a = math.pi / 4 + k * math.pi / 2

@@ -93,6 +93,12 @@ VoyageService owns the run loop: it puts players on the ship when they join, run
 
 `Services/DevService.luau` exists only in Studio. It creates `ServerStorage.DevHook`, a BindableFunction that play tests invoke from the server side: `"ForceNext", kind` turns every island you can reach next into that kind, `"Call", service, function, ...` calls a service function on the first player, and `"State"` returns the voyage state and player attributes.
 
+## Ability VFX (VFX Forge)
+
+Effects are made in the `particles` place, not here. To bring one over: in particles, open it in the VFX Forge plugin and click **Export template…**; here, click **Import .rbxm…** then **Save as VFX template**, and save the place. Templates live in the place file at `ReplicatedStorage.AbilityVFXTemplates.<folder>.<Name>` (Rojo doesn't map it, so it leaves them alone).
+
+`src/shared/VFXPlayer.luau` (`Shared.VFXPlayer`, a copy of `../particles/src/shared/AbilityVFX/Modules/VFXPlayer.luau` with the camera shake taken out, since this game has no screen shake; exempt from `--!strict`) plays them: `VFXPlayer.PlayByName(name, groundCFrame, { Scale = 1 })`. Play effects **on clients only**: the service that owns the moment fires its `<Feature>Remote` and each client plays it. Pass a point on the ground; the effect faces the CFrame's LookVector.
+
 ## UI conventions
 
 - Build every screen with `Shared.UI.Paper` (`Paper.screen`, `Paper.sheet`, `Paper.button`, `Paper.label`, `Paper.tab`, `Paper.Colors`, `Paper.Fonts`, `Paper.Layers`).

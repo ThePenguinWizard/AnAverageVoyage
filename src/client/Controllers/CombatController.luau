@@ -267,14 +267,15 @@ local function holdCamera(cf: CFrame)
 		RunService:UnbindFromRenderStep(CAMERA_BINDING)
 	end
 	cameraBound = true
-	-- Narrow the view and tip it up so the fighters sit in the lower part of the screen, clear of the card.
-	local view = cf * CFrame.Angles(math.rad(13), 0, 0)
+	-- The arena's BattleCamera looks down the aisle between the two sides; this field of view keeps both
+	-- formations at the screen edges with the middle clear for the card.
+	local view = cf
 	RunService:BindToRenderStep(CAMERA_BINDING, Enum.RenderPriority.Camera.Value + 1, function()
 		local camera = workspace.CurrentCamera
 		if camera then
 			camera.CameraType = Enum.CameraType.Scriptable
 			camera.CFrame = view
-			camera.FieldOfView = 45
+			camera.FieldOfView = 66
 		end
 	end)
 end
@@ -703,12 +704,14 @@ local function buildGui()
 	battleRoot = Paper.frame(gui, { Name = "Battle", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false })
 	dim = Paper.frame(battleRoot, { Name = "Dim", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, ZIndex = 1 })
 
-	local stage = Paper.frame(battleRoot, { Name = "Stage", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(CARD_WIDTH + 20, 600), BackgroundTransparency = 1, ZIndex = 2 })
+	-- The card hangs from the top of the screen, over the sky: the battle camera puts both front lines near the
+	-- middle of the screen, so a centred card would hide them.
+	local stage = Paper.frame(battleRoot, { Name = "Stage", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 12), Size = UDim2.fromOffset(CARD_WIDTH + 20, 600), BackgroundTransparency = 1, ZIndex = 2 })
 	stageScale = Paper.make("UIScale", { Scale = 1 }, stage)
 	Paper.make("UIListLayout", {
 		FillDirection = Enum.FillDirection.Vertical,
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Top,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Padding = UDim.new(0, 10),
 	}, stage)
@@ -743,10 +746,11 @@ local function buildGui()
 		TextYAlignment = Enum.TextYAlignment.Bottom,
 		ZIndex = 3,
 	})
+	-- In the open gap between the two sides (the card sits at the top of the screen).
 	banner = Paper.label(battleRoot, "", 44, {
 		Name = "Banner",
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 46),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.6),
 		Size = UDim2.new(0.9, 0, 0, 60),
 		TextColor3 = Paper.Colors.Light,
 		TextStrokeTransparency = 0.2,
